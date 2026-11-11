@@ -9,6 +9,9 @@ def parse_reading(clock, period, confidence, threshold):
     match = re.fullmatch(r'(\d{1,2}):([0-5]\d(?:[.]\d)?)', text)
     periods = {'1ST':1, '2ND':2, '3RD':3, 'OT':4, 'SO':5}
     p = periods.get(period.strip().upper().replace(' ', ''))
+    overtime = re.fullmatch(r'(\d{1,2})OT', period.strip().upper().replace(' ', ''))
+    if overtime and 1 <= int(overtime[1]) <= 17:
+        p = 3 + int(overtime[1])
     seconds = int(match[1])*60+float(match[2]) if match else None
     if seconds is None and re.fullmatch(r'[0-5]?\d[.]\d', text):
         seconds = float(text)

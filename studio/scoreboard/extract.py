@@ -60,7 +60,7 @@ def main():
         nonlocal ocr_seconds
         if crops:
             t=time.perf_counter()
-            result=rec.recognize(crops,['0123456789:.' if i%2==0 else '123STNDROstndro' for i in range(len(crops))])
+            result=rec.recognize(crops,['0123456789:.' if i%2==0 else '0123456789STNDROstndro' for i in range(len(crops))])
             ocr_seconds += time.perf_counter()-t
             readings.extend(zip(result[::2],result[1::2])); crops.clear()
     with (args.output/'decode.log').open('w+',encoding='utf8') as log:
@@ -104,6 +104,7 @@ def main():
                 previous=(timestamp,seconds,p)
             writer.writerow([timestamp,clock[0],period[0],clock[1],period[1],seconds,p,valid,segment,transition])
     summary={'video':str(args.video.resolve()),'source_size':args.video.stat().st_size,'source_mtime_ns':args.video.stat().st_mtime_ns,
+             'duration_seconds':float(probe['format']['duration']),
              'config':cfg,'requested_seconds':args.seconds,'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
              'parser_sha256':hashlib.sha256((ROOT/'readings.py').read_bytes()).hexdigest(),
              'runtime':{'onnxruntime':ort.__version__,'numpy':np.__version__},
