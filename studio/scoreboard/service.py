@@ -20,7 +20,9 @@ def finalized():
     if not isinstance(event, dict) or event.get('bucket') != bucket_name:
         return '', 204
     name = event.get('name', '')
-    if not name.startswith('videos/'):
+    # New sources stay outside the tracking validator's videos/ prefix.
+    # Legacy sources remain supported for existing OCR jobs.
+    if not name.startswith(('scoreboard/sources/', 'videos/')):
         return '', 204
     bucket = storage.Client().bucket(bucket_name)
     blob = bucket.blob(name, generation=int(event['generation']))
