@@ -28,6 +28,7 @@ output/
 
 # Development environment and tool caches
 .venv/
+.venv-gpu/
 venv/
 .pytest_cache/
 .ruff_cache/

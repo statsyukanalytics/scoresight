@@ -36,6 +36,37 @@ class AutomaticFieldsTests(unittest.TestCase):
         self.assertIsNone(fields)
         reader._search.assert_called_once()
 
+    def test_batch_matches_sequential_across_missing_and_moved_boards(self):
+        def make_reader():
+            reader = AutoReader(Mock(), Mock())
+            first = [(0, 0, 2, 2), (2, 0, 2, 2)]
+            moved = [(4, 0, 2, 2), (6, 0, 2, 2)]
+            def recognize(crops):
+                return [(('10:00' if i % 2 == 0 else '1ST'), .99)
+                        if crop[0, 0, 0] else ('', 0) for i, crop in enumerate(crops)]
+            reader.recognizer.recognize.side_effect = recognize
+            def search(image):
+                fields = first if image[0, 0, 0] else moved if image[0, 4, 0] else None
+                return (fields, (('10:00', .99), ('1ST', .99))) if fields else None
+            reader._search = Mock(side_effect=search)
+            return reader
+        images = []
+        for i in range(60):
+            frame = np.zeros((4, 8, 3), dtype=np.uint8)
+            if i < 9:
+                frame[:, :4] = 1
+            elif i >= 14:
+                frame[:, 4:] = 1
+            images.append(frame)
+        sequential, batched = make_reader(), make_reader()
+        expected = [sequential.read(frame) for frame in images]
+        actual = []
+        for start in range(0, len(images), 16):
+            actual.extend(batched.read_many(images[start:start+16]))
+        self.assertEqual(actual, expected)
+        self.assertEqual(batched.until_search, sequential.until_search)
+        self.assertLess(batched.recognizer.recognize.call_count, sequential.recognizer.recognize.call_count)
+
 
 if __name__ == '__main__':
     unittest.main()

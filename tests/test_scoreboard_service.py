@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +20,7 @@ class SourceRoutingTests(unittest.TestCase):
         for prefix in ('scoreboard/sources/5100/', 'videos/5100/'):
             with self.subTest(prefix=prefix):
                 bucket.reset_mock()
+                blob.metadata = {'retriedby': 'nhl-clip', 'nhlgameid': '2026020292'}
                 response = self.client.post('/', json={
                     'bucket': 'statsyuk-game-videos',
                     'name': prefix + 'game.mp4', 'generation': '123',
@@ -47,6 +49,23 @@ class SourceRoutingTests(unittest.TestCase):
             'bucket': 'statsyuk-game-videos', 'name': 'videos/ordinary.mp4', 'generation': '123',
         })
         self.assertEqual(response.status_code, 204)
+        blob.download_to_filename.assert_not_called()
+
+    @patch('studio.scoreboard.service.storage.Client')
+    def test_local_result_for_exact_source_is_preserved(self, storage):
+        blob = storage.return_value.bucket.return_value.blob.return_value
+        blob.metadata = {'retriedby': 'nhl-clip', 'nhlgameid': '2026020287',
+                         'nhltimeline': 'gs://statsyuk-game-videos/scoreboard/local/result.json'}
+        blob.exists.return_value = True
+        blob.download_as_text.return_value = json.dumps({
+            'schema_version': 2, 'nhl_game_id': 2026020287,
+            'source': {'uri': 'gs://statsyuk-game-videos/videos/game.mp4', 'generation': '123'},
+        })
+        response = self.client.post('/', json={
+            'bucket': 'statsyuk-game-videos', 'name': 'videos/game.mp4', 'generation': '123',
+        })
+        self.assertEqual(response.status_code, 204)
+        blob.patch.assert_not_called()
         blob.download_to_filename.assert_not_called()
 
 

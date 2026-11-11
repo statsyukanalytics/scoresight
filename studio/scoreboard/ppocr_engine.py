@@ -449,9 +449,8 @@ class Recognizer:
         options.inter_op_num_threads = 1
         if not self.spinning:
             options.add_session_config_entry("session.intra_op.allow_spinning", "0")
-        session = onnxruntime.InferenceSession(
-            onnx_path, options, providers=["CPUExecutionProvider"]
-        )
+        from .runtime import create_session
+        session = create_session(onnx_path, options)
         classes = session.get_outputs()[0].shape[-1]
         if isinstance(classes, int) and classes != len(characters):
             raise RuntimeError(

@@ -101,3 +101,32 @@ class AutoReader:
             self.fields, readings = pair
             return readings, self.fields
         return EMPTY, None
+
+    def read_many(self, images):
+        """Batch stable crops while preserving per-frame invalidation and search order."""
+        results = []
+        index = 0
+        while index < len(images):
+            if not self.fields or self.until_search <= 1:
+                results.append(self.read(images[index]))
+                index += 1
+                continue
+            fields = self.fields
+            count = min(len(images) - index, self.until_search - 1, 16)
+            crops = [image[y:y+h, x:x+w].copy()
+                     for image in images[index:index+count] for x,y,w,h in fields]
+            start = time.perf_counter()
+            batch = self.recognizer.recognize(crops)
+            self.ocr_seconds += time.perf_counter() - start
+            for offset in range(count):
+                readings = tuple(batch[2*offset:2*offset+2])
+                confidence = min(r[1] or 0 for r in readings)
+                if not parse_reading(readings[0][0], readings[1][0], confidence, .9)[2]:
+                    # Discard speculative later crops: the board may have moved.
+                    results.append(self.read(images[index]))
+                    index += 1
+                    break
+                self.until_search -= 1
+                results.append((readings, fields))
+                index += 1
+        return results

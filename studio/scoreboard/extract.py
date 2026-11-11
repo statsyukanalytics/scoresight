@@ -64,7 +64,20 @@ def main():
     cmd += ['-i',str(args.video)]
     cmd += ['-an','-vf',f"select='isnan(prev_selected_t)+gte(t-prev_selected_t,{1/cfg['sample_hz']})',showinfo,crop={width}:{height}:{left}:{top}:exact=1",
             '-fps_mode','passthrough','-pix_fmt','bgr24','-f','rawvideo','pipe:1']
-    readings=[]; crops=[]; ocr_seconds=0; detected_layouts=[]; layout_seconds=0
+    readings=[]; crops=[]; ocr_seconds=0; detected_layouts=[]; layout_seconds=0; frames=[]
+    last_progress = started
+    def flush_frames():
+        nonlocal last_progress
+        if frames:
+            for reading, fields in auto_reader.read_many(frames):
+                detected_layouts.append(fields)
+                readings.append(reading)
+            frames.clear()
+        now = time.perf_counter()
+        if now - last_progress >= 10:
+            print(json.dumps({'stage': 'ocr', 'samples': len(readings),
+                              'wall_seconds': round(now-started, 1)}), flush=True)
+            last_progress = now
     def flush():
         nonlocal ocr_seconds
         if crops:
@@ -81,12 +94,12 @@ def main():
                 if len(raw)!=width*height*3: raise RuntimeError('Truncated decoded frame')
                 image=np.frombuffer(raw,np.uint8).reshape(height,width,3)
                 if automatic:
-                    reading, fields = auto_reader.read(image)
-                    detected_layouts.append(fields)
-                    readings.append(reading)
+                    frames.append(image)
+                    if len(frames) >= 16: flush_frames()
                 else:
                     for x,y,w,h in boxes: crops.append(image[y-top:y-top+h,x-left:x-left+w].copy())
                 if len(crops)>=32: flush()
+            if automatic: flush_frames()
             flush()
             if proc.wait()!=0: raise RuntimeError('FFmpeg failed; see decode.log')
         finally:

@@ -209,9 +209,8 @@ class LayoutDetector:
 
         options = onnxruntime.SessionOptions()
         options.intra_op_num_threads = THREADS
-        self.session = onnxruntime.InferenceSession(
-            path, options, providers=["CPUExecutionProvider"]
-        )
+        from .runtime import create_session
+        self.session = create_session(path, options)
 
     def detect(
         self, frame: np.ndarray, min_score: float = MIN_SCORE

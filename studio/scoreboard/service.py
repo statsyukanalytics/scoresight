@@ -30,6 +30,19 @@ def finalized():
     metadata = blob.metadata or {}
     if metadata.get('retriedby') != 'nhl-clip':
         return '', 204
+    # A local GPU run can publish the same source generation while an older
+    # cloud delivery is retrying. Do not replace that completed result.
+    published = metadata.get('nhltimeline', '')
+    if published.startswith(f'gs://{bucket_name}/scoreboard/'):
+        result_blob = bucket.blob(published.removeprefix(f'gs://{bucket_name}/'))
+        if result_blob.exists():
+            result = json.loads(result_blob.download_as_text())
+            source = result.get('source', {})
+            if (result.get('schema_version') == 2
+                    and source.get('uri') == f'gs://{bucket_name}/{name}'
+                    and str(source.get('generation')) == str(event['generation'])
+                    and str(result.get('nhl_game_id')) == metadata.get('nhlgameid')):
+                return '', 204
     profile = metadata.get('scoreboardprofile') or 'auto'
     profiles = Path(__file__).parent / 'profiles'
     if profile != 'auto' and profile not in {p.stem for p in profiles.glob('*.json')}:
@@ -43,6 +56,7 @@ def finalized():
         blob.patch(if_metageneration_match=blob.metageneration)
         return '', 204
     with tempfile.TemporaryDirectory() as tmp:
+        print(json.dumps({'stage': 'download', 'nhl_game_id': game_id, 'source': name}), flush=True)
         folder = Path(tmp)
         video = folder / 'video'
         blob.download_to_filename(video)
