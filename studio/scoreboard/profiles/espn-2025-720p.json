@@ -1,0 +1,19 @@
+{
+  "name": "espn-2025-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    102,
+    80,
+    63,
+    29
+  ],
+  "period": [
+    110,
+    44,
+    49,
+    27
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

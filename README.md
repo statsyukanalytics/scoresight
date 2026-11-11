@@ -1,3 +1,7 @@
+# Statsyuk ScoreSight fork
+
+The Statsyuk headless NHL scoreboard OCR worker lives in [`studio/scoreboard`](studio/scoreboard). See [setup, deployment, and validation](docs/Scoreboard%20OCR.md). The upstream ScoreSight desktop application is preserved below.
+
 <div align="center">
 
 <h1>

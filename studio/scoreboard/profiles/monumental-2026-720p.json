@@ -1,0 +1,19 @@
+{
+  "name": "monumental-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    225,
+    68,
+    73,
+    28
+  ],
+  "period": [
+    231,
+    31,
+    59,
+    37
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

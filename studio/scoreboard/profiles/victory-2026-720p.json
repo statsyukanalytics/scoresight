@@ -1,0 +1,19 @@
+{
+  "name": "victory-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    602,
+    53,
+    76,
+    25
+  ],
+  "period": [
+    614,
+    33,
+    39,
+    21
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

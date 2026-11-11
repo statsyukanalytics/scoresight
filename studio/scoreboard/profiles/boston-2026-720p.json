@@ -1,0 +1,19 @@
+{
+  "name": "boston-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    226,
+    50,
+    68,
+    34
+  ],
+  "period": [
+    240,
+    72,
+    46,
+    30
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

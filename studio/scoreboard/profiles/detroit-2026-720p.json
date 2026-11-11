@@ -1,0 +1,19 @@
+{
+  "name": "detroit-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    258,
+    88,
+    65,
+    34
+  ],
+  "period": [
+    266,
+    45,
+    52,
+    40
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

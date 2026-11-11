@@ -42,3 +42,6 @@ htmlcov/
 /ocr_models/ppocr/*
 !/ocr_models/ppocr/LICENSE
 !/ocr_models/ppocr/NOTICE
+
+# Statsyuk headless worker model downloads
+studio/scoreboard/ocr_models/ppocr/PP-OCR*/

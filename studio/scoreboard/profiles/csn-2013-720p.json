@@ -1,0 +1,19 @@
+{
+  "name": "csn-2013-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    760,
+    55,
+    90,
+    30
+  ],
+  "period": [
+    700,
+    55,
+    50,
+    30
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

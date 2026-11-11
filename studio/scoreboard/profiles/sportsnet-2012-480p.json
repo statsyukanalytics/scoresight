@@ -1,0 +1,19 @@
+{
+  "name": "sportsnet-2012-480p",
+  "width": 854,
+  "height": 480,
+  "clock": [
+    453,
+    31,
+    65,
+    28
+  ],
+  "period": [
+    399,
+    31,
+    50,
+    28
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

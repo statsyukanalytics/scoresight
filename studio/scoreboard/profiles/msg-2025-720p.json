@@ -1,0 +1,19 @@
+{
+  "name": "msg-2025-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    35,
+    48,
+    63,
+    30
+  ],
+  "period": [
+    46,
+    78,
+    43,
+    31
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

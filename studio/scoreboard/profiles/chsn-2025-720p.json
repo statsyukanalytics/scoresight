@@ -1,0 +1,19 @@
+{
+  "name": "chsn-2025-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    57,
+    61,
+    82,
+    31
+  ],
+  "period": [
+    73,
+    35,
+    51,
+    32
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

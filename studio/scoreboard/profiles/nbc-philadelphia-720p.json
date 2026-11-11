@@ -1,0 +1,19 @@
+{
+  "name": "nbc-philadelphia-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    458,
+    38,
+    90,
+    30
+  ],
+  "period": [
+    410,
+    38,
+    45,
+    30
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

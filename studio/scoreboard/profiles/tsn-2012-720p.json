@@ -1,0 +1,19 @@
+{
+  "name": "tsn-2012-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    792,
+    50,
+    110,
+    34
+  ],
+  "period": [
+    706,
+    50,
+    76,
+    34
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

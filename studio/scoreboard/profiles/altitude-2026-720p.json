@@ -1,0 +1,19 @@
+{
+  "name": "altitude-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    70,
+    69,
+    59,
+    30
+  ],
+  "period": [
+    86,
+    30,
+    45,
+    30
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

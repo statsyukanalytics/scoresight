@@ -1,0 +1,19 @@
+{
+  "name": "tnt-2025-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    249,
+    64,
+    50,
+    24
+  ],
+  "period": [
+    254,
+    47,
+    40,
+    22
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

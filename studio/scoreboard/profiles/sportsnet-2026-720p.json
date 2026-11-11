@@ -1,0 +1,35 @@
+{
+  "name": "sportsnet-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    308,
+    46,
+    64,
+    32
+  ],
+  "period": [
+    319,
+    79,
+    40,
+    28
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9,
+  "variants": [
+    {
+      "clock": [
+        360,
+        47,
+        64,
+        33
+      ],
+      "period": [
+        374,
+        79,
+        44,
+        28
+      ]
+    }
+  ]
+}

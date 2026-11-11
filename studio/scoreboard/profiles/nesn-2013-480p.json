@@ -1,0 +1,19 @@
+{
+  "name": "nesn-2013-480p",
+  "width": 854,
+  "height": 480,
+  "clock": [
+    550,
+    40,
+    64,
+    22
+  ],
+  "period": [
+    500,
+    40,
+    46,
+    22
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

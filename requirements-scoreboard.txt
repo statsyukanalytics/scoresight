@@ -1,0 +1,8 @@
+numpy
+opencv-python-headless
+onnxruntime
+psycopg[binary]
+google-cloud-storage
+PyYAML
+Flask
+gunicorn

@@ -1,0 +1,19 @@
+{
+  "name": "sportsnet-2025-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    308,
+    51,
+    58,
+    27
+  ],
+  "period": [
+    319,
+    80,
+    39,
+    23
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

@@ -1,0 +1,19 @@
+{
+  "name": "sportsnet-2012-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    678,
+    48,
+    96,
+    38
+  ],
+  "period": [
+    600,
+    48,
+    73,
+    38
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

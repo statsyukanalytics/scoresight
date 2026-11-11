@@ -1,0 +1,19 @@
+{
+  "name": "tsn-2026-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    76,
+    60,
+    63,
+    24
+  ],
+  "period": [
+    88,
+    80,
+    48,
+    32
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

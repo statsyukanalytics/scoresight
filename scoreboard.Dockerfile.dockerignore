@@ -1,0 +1,9 @@
+**
+!scoreboard.Dockerfile
+!requirements-scoreboard.txt
+!studio/
+!studio/__init__.py
+!studio/scoreboard/
+!studio/scoreboard/**
+studio/scoreboard/**/__pycache__/
+studio/scoreboard/ocr_models/ppocr/PP-OCR*/

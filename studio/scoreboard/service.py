@@ -1,0 +1,65 @@
+"""Authenticated Cloud Run/Eventarc receiver for finalized NHL clip uploads."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+from flask import Flask, request
+from google.cloud import storage
+from google.api_core.exceptions import PreconditionFailed
+
+app = Flask(__name__)
+
+
+@app.post('/')
+def finalized():
+    event = request.get_json()
+    bucket_name = os.environ.get('VIDEO_BUCKET', 'statsyuk-game-videos')
+    if not isinstance(event, dict) or event.get('bucket') != bucket_name:
+        return '', 204
+    name = event.get('name', '')
+    if not name.startswith('videos/'):
+        return '', 204
+    bucket = storage.Client().bucket(bucket_name)
+    blob = bucket.blob(name, generation=int(event['generation']))
+    blob.reload()
+    metadata = blob.metadata or {}
+    if metadata.get('retriedby') != 'nhl-clip' or not metadata.get('scoreboardprofile'):
+        return '', 204
+    profile = metadata['scoreboardprofile']
+    profiles = Path(__file__).parent / 'profiles'
+    if profile not in {p.stem for p in profiles.glob('*.json')}:
+        return {'error': 'Unknown scoreboard profile'}, 400
+    game_id = int(metadata['nhlgameid'])
+    # Source generation identifies the exact input, even if a name is reused.
+    prefix = f'scoreboard/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
+    complete = bucket.blob(prefix + '/nhl-timeline.json')
+    if complete.exists():
+        blob.metadata = {**metadata, 'nhltimeline': f'gs://{bucket_name}/{complete.name}'}
+        blob.patch(if_metageneration_match=blob.metageneration)
+        return '', 204
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp)
+        video = folder / 'video'
+        blob.download_to_filename(video)
+        output = folder / 'output'
+        subprocess.run([sys.executable, '-m', 'studio.scoreboard', '--video', str(video),
+                        '--config', str(profiles / (profile + '.json')), '--game', str(game_id),
+                        '--output', str(output)], check=True, timeout=3300)
+        timeline = json.loads((output / 'nhl-timeline.json').read_text(encoding='utf8'))
+        timeline['source'] = {'uri': f'gs://{bucket_name}/{name}', 'generation': event['generation']}
+        # Publish the timeline last: retries only skip fully published results.
+        for filename in ('observations.csv', 'summary.json'):
+            try:
+                bucket.blob(prefix + '/' + filename).upload_from_filename(output / filename, if_generation_match=0)
+            except PreconditionFailed:
+                pass  # A previous delivery already published this immutable result.
+        try:
+            complete.upload_from_string(json.dumps(timeline, default=str), content_type='application/json', if_generation_match=0)
+        except PreconditionFailed:
+            pass
+        blob.metadata = {**metadata, 'nhltimeline': f'gs://{bucket_name}/{complete.name}'}
+        blob.patch(if_metageneration_match=blob.metageneration)
+    return '', 204

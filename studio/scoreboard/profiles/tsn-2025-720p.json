@@ -1,0 +1,19 @@
+{
+  "name": "tsn-2025-720p",
+  "width": 1280,
+  "height": 720,
+  "clock": [
+    76,
+    50,
+    63,
+    24
+  ],
+  "period": [
+    88,
+    68,
+    43,
+    28
+  ],
+  "sample_hz": 2,
+  "min_confidence": 0.9
+}

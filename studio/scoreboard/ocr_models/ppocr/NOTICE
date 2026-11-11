@@ -1,0 +1,20 @@
+ScoreSight's PP-OCR engine uses PaddleOCR's PP-OCRv6 text recognition models.
+
+PP-OCRv6_small_rec and PP-OCRv6_tiny_rec
+Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved.
+Licensed under the Apache License, Version 2.0 (see LICENSE in this folder).
+https://github.com/PaddlePaddle/PaddleOCR
+
+The ONNX files are PaddlePaddle's official exports, unmodified:
+  PP-OCRv6_small_rec/inference.onnx
+    https://huggingface.co/PaddlePaddle/PP-OCRv6_small_rec_onnx
+    revision b8f84f0b80c529de40b4fbb3544b84fa7233a513
+  PP-OCRv6_tiny_rec/inference.onnx
+    https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_rec_onnx
+    revision 2612ab37152ae0a677521bae4e1e3d4fb4cf7c30
+
+Each folder's characters.txt is the character list (character_dict) of the
+model's inference.yml at the same revision, one character per line, and
+config.json records the model's input size and channel order from that file.
+ScoreSight's scripts/fetch_models.py writes both and checks every file
+against its pinned SHA-256.
