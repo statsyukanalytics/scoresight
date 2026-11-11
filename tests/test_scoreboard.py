@@ -71,6 +71,14 @@ class AlignmentTests(unittest.TestCase):
         shootout = [{**row(0, 1200, 5), 'period_raw': 'SO'}, {**row(.5, 1200, 5), 'period_raw': 'SO'}]
         self.assertEqual(align(shootout, [], [], playoff=True)['clock_intervals'], [])
 
+    def test_shift_chart_goal_marker_is_not_on_ice_evidence(self):
+        marker = dict(period=1, start_time=100, end_time=100, type_code=505)
+        result = align([row(0, 1100), row(.5, 1100)], [], [marker])
+        self.assertEqual(result['shifts'][0]['status'], 'candidate')
+        self.assertEqual(result['shifts'][0]['record_kind'], 'point_marker')
+        self.assertEqual(result['clock_intervals'][0]['shift_indexes'], [])
+        self.assertEqual(result['clock_intervals'][0]['marker_indexes'], [0])
+
 
 if __name__ == '__main__':
     unittest.main()

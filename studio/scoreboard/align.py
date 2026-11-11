@@ -65,7 +65,7 @@ def align(observations, events, shifts, playoff=False, duration=None):
     observations = sorted(observations, key=lambda r: float(r['video_seconds']))
     intervals = clock_intervals(observations, lengths)
     for i, interval in enumerate(intervals):
-        interval.update(id=i, event_indexes=[], shift_indexes=[])
+        interval.update(id=i, event_indexes=[], shift_indexes=[], marker_indexes=[])
     matched_events = []
     for event_index, event in enumerate(events):
         try:
@@ -88,6 +88,13 @@ def align(observations, events, shifts, playoff=False, duration=None):
     for shift_index, shift in enumerate(shifts):
         indexes = []
         start, end = shift.get('start_time'), shift.get('end_time')
+        # NHL shift charts also contain zero-duration goal markers (505), not on-ice shifts (517).
+        marker = start is not None and end == start and shift.get('type_code') == 505
+        if marker:
+            for i, interval in enumerate(intervals):
+                if interval['period'] == shift['period'] and interval['elapsed'][0] <= start <= interval['elapsed'][1]:
+                    indexes.append(i)
+                    interval['marker_indexes'].append(shift_index)
         if start is not None and end is not None and end > start:
             for i, interval in enumerate(intervals):
                 a, b = interval['elapsed']
@@ -96,7 +103,9 @@ def align(observations, events, shifts, playoff=False, duration=None):
                 if interval['period'] == shift['period'] and overlaps:
                     indexes.append(i)
                     interval['shift_indexes'].append(shift_index)
-        matched_shifts.append(_match(shift, indexes, intervals))
+        match = _match(shift, indexes, intervals)
+        match['record_kind'] = 'point_marker' if marker else 'shift'
+        matched_shifts.append(match)
     # Explicit unaligned video spans. Period transitions are candidates for intermission,
     # not proof: the broadcast could cut directly between periods.
     gaps = []
