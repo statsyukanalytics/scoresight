@@ -45,3 +45,6 @@ htmlcov/
 
 # Statsyuk headless worker model downloads
 studio/scoreboard/ocr_models/ppocr/PP-OCR*/
+
+# Pinned automatic layout detector
+studio/scoreboard/models/

@@ -13,14 +13,17 @@ from .nhl import load_bundle
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--video', type=Path, required=True)
-    parser.add_argument('--config', type=Path, required=True)
+    parser.add_argument('--config', type=Path, help='Optional manual layout; automatic by default')
     parser.add_argument('--game', type=int, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--ffmpeg', default='ffmpeg')
     args = parser.parse_args()
     bundle = load_bundle(args.game)
-    subprocess.run([sys.executable, '-m', 'studio.scoreboard.extract', '--video', str(args.video),
-                    '--config', str(args.config), '--output', str(args.output), '--ffmpeg', args.ffmpeg], check=True)
+    command = [sys.executable, '-m', 'studio.scoreboard.extract', '--video', str(args.video),
+               '--output', str(args.output), '--ffmpeg', args.ffmpeg]
+    if args.config:
+        command += ['--config', str(args.config)]
+    subprocess.run(command, check=True)
     with (args.output / 'observations.csv').open(newline='', encoding='utf8') as file:
         observations = list(csv.DictReader(file))
     summary = json.loads((args.output / 'summary.json').read_text(encoding='utf8'))

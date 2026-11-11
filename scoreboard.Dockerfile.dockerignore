@@ -7,3 +7,4 @@
 !studio/scoreboard/**
 studio/scoreboard/**/__pycache__/
 studio/scoreboard/ocr_models/ppocr/PP-OCR*/
+studio/scoreboard/models/

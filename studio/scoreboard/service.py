@@ -26,15 +26,15 @@ def finalized():
     blob = bucket.blob(name, generation=int(event['generation']))
     blob.reload()
     metadata = blob.metadata or {}
-    if metadata.get('retriedby') != 'nhl-clip' or not metadata.get('scoreboardprofile'):
+    if metadata.get('retriedby') != 'nhl-clip':
         return '', 204
-    profile = metadata['scoreboardprofile']
+    profile = metadata.get('scoreboardprofile') or 'auto'
     profiles = Path(__file__).parent / 'profiles'
-    if profile not in {p.stem for p in profiles.glob('*.json')}:
+    if profile != 'auto' and profile not in {p.stem for p in profiles.glob('*.json')}:
         return {'error': 'Unknown scoreboard profile'}, 400
     game_id = int(metadata['nhlgameid'])
     # Source generation identifies the exact input, even if a name is reused.
-    prefix = f'scoreboard/v2/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
+    prefix = f'scoreboard/v2-auto/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
     complete = bucket.blob(prefix + '/nhl-timeline.json')
     if complete.exists():
         blob.metadata = {**metadata, 'nhltimeline': f'gs://{bucket_name}/{complete.name}'}
@@ -45,13 +45,15 @@ def finalized():
         video = folder / 'video'
         blob.download_to_filename(video)
         output = folder / 'output'
-        subprocess.run([sys.executable, '-m', 'studio.scoreboard', '--video', str(video),
-                        '--config', str(profiles / (profile + '.json')), '--game', str(game_id),
-                        '--output', str(output)], check=True, timeout=3300)
+        command = [sys.executable, '-m', 'studio.scoreboard', '--video', str(video),
+                   '--game', str(game_id), '--output', str(output)]
+        if profile != 'auto':
+            command += ['--config', str(profiles / (profile + '.json'))]
+        subprocess.run(command, check=True, timeout=3300)
         timeline = json.loads((output / 'nhl-timeline.json').read_text(encoding='utf8'))
         timeline['source'] = {'uri': f'gs://{bucket_name}/{name}', 'generation': event['generation']}
         # Publish the timeline last: retries only skip fully published results.
-        for filename in ('observations.csv', 'summary.json'):
+        for filename in ('observations.csv', 'summary.json', 'layout-observations.json'):
             try:
                 bucket.blob(prefix + '/' + filename).upload_from_filename(output / filename, if_generation_match=0)
             except PreconditionFailed:

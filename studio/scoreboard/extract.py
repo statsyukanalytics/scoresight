@@ -22,16 +22,17 @@ from .readings import parse_reading
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--video', type=Path, required=True)
-    ap.add_argument('--config', type=Path, required=True)
+    ap.add_argument('--config', type=Path, help='Optional manual layout; omit for automatic detection')
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--seconds', type=float, help='Limit decoding for a pilot run')
     ap.add_argument('--ffmpeg', default='ffmpeg')
     args = ap.parse_args()
-    cfg = json.loads(args.config.read_text())
+    automatic = args.config is None
+    cfg = json.loads(args.config.read_text()) if args.config else {'name': 'auto', 'sample_hz': 2, 'min_confidence': .9}
     args.output.mkdir(parents=True, exist_ok=True)
     if cfg['sample_hz'] <= 0:
         raise ValueError('sample_hz must be positive')
-    for x, y, w, h in (cfg['clock'], cfg['period']):
+    for x, y, w, h in ([] if automatic else (cfg['clock'], cfg['period'])):
         if min(x, y) < 0 or min(w, h) <= 0 or x+w > cfg['width'] or y+h > cfg['height']:
             raise ValueError('ROI falls outside configured video dimensions')
     if (args.output/'observations.csv').exists():
@@ -39,15 +40,23 @@ def main():
     probe = json.loads(subprocess.check_output([str(Path(args.ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')),
         '-v','error','-show_streams','-show_format','-of','json',str(args.video)], creationflags=0x08000000 if os.name=='nt' else 0))
     stream = next(s for s in probe['streams'] if s['codec_type']=='video')
+    if automatic:
+        cfg.update(width=stream['width'], height=stream['height'])
+        from .auto_layout import detector, MODEL_REVISION, MODEL_SHA256
+        from .auto_fields import AutoReader
+        layout_detector = detector()
+        cfg.update(layout_model_revision=MODEL_REVISION, layout_model_sha256=MODEL_SHA256)
     if (stream['width'],stream['height']) != (cfg['width'],cfg['height']):
         raise SystemExit('Video dimensions do not match configured ROIs')
     started = time.perf_counter()
     rec = Recognizer(SMALL)
     if not rec.load():
         raise RuntimeError(rec.error)
+    if automatic:
+        auto_reader = AutoReader(layout_detector, rec)
     # Decode sequentially; retain selected frames' original PTS instead of inventing a CFR clock.
     # Crop the shared bounding rectangle before transferring frames to Python.
-    boxes = [cfg['clock'],cfg['period']]
+    boxes = [[0, 0, cfg['width'], cfg['height']]] if automatic else [cfg['clock'],cfg['period']]
     left=min(b[0] for b in boxes); top=min(b[1] for b in boxes)
     width=max(b[0]+b[2] for b in boxes)-left; height=max(b[1]+b[3] for b in boxes)-top
     cmd=[args.ffmpeg,'-hide_banner','-nostats']
@@ -55,7 +64,7 @@ def main():
     cmd += ['-i',str(args.video)]
     cmd += ['-an','-vf',f"select='isnan(prev_selected_t)+gte(t-prev_selected_t,{1/cfg['sample_hz']})',showinfo,crop={width}:{height}:{left}:{top}:exact=1",
             '-fps_mode','passthrough','-pix_fmt','bgr24','-f','rawvideo','pipe:1']
-    readings=[]; crops=[]; ocr_seconds=0
+    readings=[]; crops=[]; ocr_seconds=0; detected_layouts=[]; layout_seconds=0
     def flush():
         nonlocal ocr_seconds
         if crops:
@@ -71,7 +80,12 @@ def main():
                 if not raw: break
                 if len(raw)!=width*height*3: raise RuntimeError('Truncated decoded frame')
                 image=np.frombuffer(raw,np.uint8).reshape(height,width,3)
-                for x,y,w,h in boxes: crops.append(image[y-top:y-top+h,x-left:x-left+w].copy())
+                if automatic:
+                    reading, fields = auto_reader.read(image)
+                    detected_layouts.append(fields)
+                    readings.append(reading)
+                else:
+                    for x,y,w,h in boxes: crops.append(image[y-top:y-top+h,x-left:x-left+w].copy())
                 if len(crops)>=32: flush()
             flush()
             if proc.wait()!=0: raise RuntimeError('FFmpeg failed; see decode.log')
@@ -79,6 +93,9 @@ def main():
             proc.stdout.close()
             if proc.poll() is None: proc.kill(); proc.wait()
         log.flush();log.seek(0);decode_text=log.read()
+    if automatic:
+        layout_seconds = auto_reader.layout_seconds
+        ocr_seconds = auto_reader.ocr_seconds
     checkpoint={'readings':readings,'ocr_seconds':ocr_seconds,'config':cfg,
                 'video':str(args.video.resolve()),'source_size':args.video.stat().st_size,
                 'source_mtime_ns':args.video.stat().st_mtime_ns}
@@ -86,6 +103,8 @@ def main():
         json.dump(checkpoint,checkpoint_file)
     pts=[float(x) for x in re.findall(r'\bpts_time:([\d.eE+-]+)',decode_text)]
     if len(pts)!=len(readings): raise RuntimeError(f'PTS/readings mismatch: {len(pts)} vs {len(readings)}')
+    (args.output/'layout-observations.json').write_text(json.dumps(
+        [{'video_seconds': t, 'fields': fields} for t, fields in zip(pts, detected_layouts)]), encoding='utf8')
     valid_count=0; previous=None; segment=0
     with (args.output/'observations.csv').open('w',newline='',encoding='utf8') as f:
         writer=csv.writer(f)
@@ -109,6 +128,7 @@ def main():
              'parser_sha256':hashlib.sha256((ROOT/'readings.py').read_bytes()).hexdigest(),
              'runtime':{'onnxruntime':ort.__version__,'numpy':np.__version__},
              'observations':len(readings),'valid':valid_count,'ocr_seconds':ocr_seconds,'wall_seconds':time.perf_counter()-started,
+             'layout_seconds':layout_seconds,'layout_detected':sum(fields is not None for fields in detected_layouts),
              'timestamp_basis':'selected decoded frame PTS; FFmpeg default input start normalization','provider':rec._session.get_providers(),
              'status':'unreviewed OCR; sequence flags do not classify live play or replay'}
     (args.output/'summary.json').write_text(json.dumps(summary,indent=2)); print(json.dumps(summary),flush=True)

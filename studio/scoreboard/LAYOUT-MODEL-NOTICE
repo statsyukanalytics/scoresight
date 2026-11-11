@@ -1,0 +1,6 @@
+Scoreboard layout detector by Roy Shilkrot / ScoreSight.
+Model: https://huggingface.co/royshilkrot/scoreboard-layout
+Revision: e8c58bd89bd3b7a8ce43be9024dc254cb7b889f8
+SHA-256: 511919c6bee1d898ecba9a80d5ab98fe3f9f238021a799cfcfdcb48ccd75515a
+D-FINE-S architecture. Model distributed under Apache-2.0 (see LAYOUT-MODEL-LICENSE).
+Headless auto_layout.py is adapted from the upstream ScoreSight src/auto_layout.py in this fork (upstream base 8bef5a9). Original ScoreSight license retained in SCORESIGHT-LICENSE.
