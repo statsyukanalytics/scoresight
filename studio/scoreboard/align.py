@@ -1,5 +1,6 @@
 """Conservative, bidirectional NHL clock alignment. No candidate is verified live."""
 import math
+from .candidates import add_candidates, conflict_at, period_conflicts
 
 
 def seconds(value):
@@ -63,7 +64,11 @@ def align(observations, events, shifts, playoff=False, duration=None):
     lengths = {p: 1200 if p <= 3 or playoff else 300 for p in range(1, 21) if playoff or p <= 4}
     # Stable ordering; duplicated PTS cannot create a negative or zero-length segment.
     observations = sorted(observations, key=lambda r: float(r['video_seconds']))
-    intervals = clock_intervals(observations, lengths)
+    readings = [r for row in observations if (r := _reading(row, lengths)) is not None]
+    conflicts = period_conflicts(readings, lengths)
+    strict = [dict(r, valid=False) if conflict_at(float(r['video_seconds']), conflicts) else r
+              for r in observations]
+    intervals = clock_intervals(strict, lengths)
     for i, interval in enumerate(intervals):
         interval.update(id=i, event_indexes=[], shift_indexes=[], marker_indexes=[])
     matched_events = []
@@ -137,10 +142,11 @@ def align(observations, events, shifts, playoff=False, duration=None):
         ordered = sorted(indexes, key=lambda i: (events[i].get('sort_order') or 0, events[i].get('event_id') or 0))
         if any(matched_events[i]['timing_role'] != 'event' for i in ordered):
             boundaries.append({'period': period, 'elapsed_clock': clock, 'event_indexes': ordered})
-    return {'schema_version': 2, 'status': 'needs_review',
+    result = {'schema_version': 2, 'status': 'needs_review',
             'note': 'All video matches are candidates. Held clocks may be normal OCR quantization or stoppages. Repeated footage, missing clocks, and intermissions are not automatically verified. Shift membership is game-clock evidence, not visual player detection.',
             'clock_intervals': intervals, 'gaps': gaps, 'boundary_groups': boundaries,
             'events': matched_events, 'shifts': matched_shifts,
             'coverage': {kind: {status: sum(x['status'] == status for x in records)
                                for status in ('candidate', 'ambiguous', 'unmatched')}
                          for kind, records in (('events', matched_events), ('shifts', matched_shifts))}}
+    return add_candidates(result, readings, conflicts, seconds)

@@ -5,6 +5,7 @@ from .align import align, _reading, seconds
 from .boundaries import derive_boundaries, link_boundaries, select_matches, collect_segments, candidates_for
 from .clock_audit import analyze
 from .penalty_schedule import derive_windows
+from .candidates import conflict_at
 
 
 def snapshot_for(bundle, game_id):
@@ -70,7 +71,9 @@ def add_evidence(result, observations, bundle, game_id):
     lengths = {p: 1200 if p <= 3 or str(game_id)[4:6] == '03' else 300
                for p in range(1, 21) if str(game_id)[4:6] == '03' or p <= 4}
     rows = sorted(observations, key=lambda r: float(r['video_seconds']))
-    rows = [dict(r, valid=_reading(r, lengths) is not None) for r in rows]
+    rows = [dict(r, valid=_reading(r, lengths) is not None
+                 and conflict_at(float(r['video_seconds']), result.get('period_conflicts', [])) is None)
+            for r in rows]
     audit_issue = None
     try:
         flags, index = analyze(rows)
@@ -138,7 +141,7 @@ def add_evidence(result, observations, bundle, game_id):
     if audit_issue:
         strength['issues'].append(audit_issue)
     result['strength_context'] = strength
-    result['pipeline_version'] = 'scoreboard-evidence-v1'
+    result['pipeline_version'] = 'scoreboard-evidence-v2'
     return result
 
 

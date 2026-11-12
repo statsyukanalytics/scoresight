@@ -3,6 +3,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -27,8 +28,14 @@ def main():
     ap.add_argument('--config', type=Path, help='Optional manual layout; omit for automatic detection')
     ap.add_argument('--output', type=Path, required=True)
     ap.add_argument('--seconds', type=float, help='Limit decoding for a pilot run')
+    ap.add_argument('--start-seconds', type=float, default=0,
+                    help='Sample a source-video window while preserving original frame PTS')
     ap.add_argument('--ffmpeg', default='ffmpeg')
     args = ap.parse_args()
+    if not math.isfinite(args.start_seconds) or args.start_seconds < 0:
+        ap.error('--start-seconds must be finite and non-negative')
+    if args.seconds is not None and (not math.isfinite(args.seconds) or args.seconds <= 0):
+        ap.error('--seconds must be finite and positive')
     run_hashes = {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in ("extract.py", "auto_fields.py", "field_layouts.py", "readings.py", "runtime.py")}
     automatic = args.config is None
     cfg = json.loads(args.config.read_text()) if args.config else {'name': 'auto', 'sample_hz': 2, 'min_confidence': .9}
@@ -62,9 +69,11 @@ def main():
     left=min(b[0] for b in boxes); top=min(b[1] for b in boxes)
     width=max(b[0]+b[2] for b in boxes)-left; height=max(b[1]+b[3] for b in boxes)-top
     cmd=[args.ffmpeg,'-hide_banner','-nostats']
+    if args.start_seconds:
+        cmd += ['-copyts', '-start_at_zero', '-ss', str(args.start_seconds)]
     if args.seconds: cmd += ['-t',str(args.seconds)]
     cmd += ['-i',str(args.video)]
-    cmd += ['-an','-vf',f"select='isnan(prev_selected_t)+gte(t-prev_selected_t,{1/cfg['sample_hz']})',showinfo,crop={width}:{height}:{left}:{top}:exact=1",
+    cmd += ['-an','-vf',f"select='gte(t,{args.start_seconds})*(isnan(prev_selected_t)+gte(t-prev_selected_t,{1/cfg['sample_hz']}))',showinfo,crop={width}:{height}:{left}:{top}:exact=1",
             '-fps_mode','passthrough','-pix_fmt','bgr24','-f','rawvideo','pipe:1']
     readings=[]; crops=[]; ocr_seconds=0; detected_layouts=[]; layout_seconds=0; frames=[]
     last_progress = started
@@ -142,7 +151,7 @@ def main():
             writer.writerow([timestamp,clock[0],period[0],clock[1],period[1],seconds,p,valid,segment,transition])
     summary={'video':str(args.video.resolve()),'source_size':args.video.stat().st_size,'source_mtime_ns':args.video.stat().st_mtime_ns,
              'duration_seconds':float(probe['format']['duration']),
-             'config':cfg,'requested_seconds':args.seconds,'script_sha256':run_hashes['extract.py'],'code_hashes':run_hashes,
+             'config':cfg,'start_seconds':args.start_seconds,'requested_seconds':args.seconds,'script_sha256':run_hashes['extract.py'],'code_hashes':run_hashes,
              'parser_sha256':run_hashes['readings.py'],
              'runtime':{'onnxruntime':ort.__version__,'numpy':np.__version__},
              'observations':len(readings),'valid':valid_count,'ocr_seconds':ocr_seconds,'wall_seconds':time.perf_counter()-started,

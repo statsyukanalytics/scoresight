@@ -18,7 +18,10 @@ class AlignmentTests(unittest.TestCase):
     def test_missing_clock_does_not_bridge_gap(self):
         result = align([row(0, 1101), row(.5, 0, valid=False), row(1, 1100)],
                        [dict(period_number=1, time_in_period='01:40')], [])
-        self.assertEqual(result['events'][0]['status'], 'unmatched')
+        self.assertEqual(result['events'][0]['clock_status'], 'unmatched')
+        self.assertEqual(result['events'][0]['occurrences'], [])
+        self.assertEqual(result['events'][0]['review_candidates'][0]['video'], [1, 1])
+        self.assertEqual(result['clock_intervals'], [])
 
     def test_regular_and_playoff_overtime(self):
         events = [dict(period_number=4, time_in_period='00:01')]
@@ -64,7 +67,9 @@ class AlignmentTests(unittest.TestCase):
 
     def test_no_running_segment_before_shift_start(self):
         result = align([row(0, 1101), row(.5, 1100)], [], [dict(period=1, start_time=100, end_time=120)])
-        self.assertEqual(result['shifts'][0]['status'], 'unmatched')
+        self.assertEqual(result['shifts'][0]['clock_status'], 'unmatched')
+        self.assertEqual(result['shifts'][0]['interval_ids'], [])
+        self.assertEqual(result['clock_intervals'][0]['shift_indexes'], [])
 
     def test_multiple_overtime_and_shootout(self):
         self.assertEqual(parse_reading('19:59', '2OT', .99, .9), (1199, 5, True))

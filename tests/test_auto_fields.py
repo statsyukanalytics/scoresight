@@ -26,6 +26,23 @@ class AutomaticFieldsTests(unittest.TestCase):
         self.assertIsNone(choose_pair([((10, 10, 70, 25), ('7:34', .99)),
                                        ((10, 40, 50, 25), ('3RD', .3))]))
 
+    def test_distant_penalty_timer_is_not_paired_with_game_period(self):
+        self.assertIsNone(choose_pair([((280, 70, 40, 20), ('1:12', .99)),
+                                       ((80, 85, 45, 20), ('3RD', .99))]))
+
+    def test_competing_timer_does_not_poison_working_layout_cache(self):
+        reader = AutoReader(Mock(), Mock())
+        fields = [(0, 0, 40, 20), (0, 20, 40, 20)]
+        reader.fields = fields
+        reader.layouts = [fields]
+        reader.until_search = 0
+        reader._known = Mock(return_value=((('10:00', .99), ('3RD', .99)), fields))
+        reader._search = Mock(return_value=([(100, 0, 40, 20), fields[1]],
+                                           (('1:00', .99), ('3RD', .99))))
+        self.assertEqual(reader.read(np.zeros((80, 160, 3), dtype=np.uint8)), (EMPTY, None))
+        self.assertEqual(reader.layouts, [fields])
+        self.assertEqual(reader.fields, fields)
+
     def test_disappearing_scoreboard_does_not_reuse_cached_readings(self):
         reader = AutoReader(Mock(), Mock())
         reader.fields = [(0, 0, 10, 10), (20, 0, 10, 10)]

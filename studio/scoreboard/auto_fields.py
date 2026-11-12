@@ -29,6 +29,12 @@ def choose_pair(candidates):
         chosen.append(best)
     if iou(chosen[0][0], chosen[1][0]) > .3:
         return None
+    # A penalty countdown elsewhere on the board is not a clock/period pair.
+    x, y, w, h = chosen[0][0]
+    px, py, pw, ph = chosen[1][0]
+    gap = math.hypot(max(0, x-px-pw, px-x-w), max(0, y-py-ph, py-y-h))
+    if gap > 3 * max(h, ph):
+        return None
     return [x[0] for x in chosen], tuple(x[1] for x in chosen)
 
 
@@ -128,6 +134,10 @@ class AutoReader:
         self.until_search = 20 if pair or self.fields else 4
         if pair:
             fields, readings = pair
+            if known[1] and iou(known[1][0], fields[0]) < .5:
+                # Keep working game-clock geometry when a penalty timer appears.
+                # Conflicting text remains unresolved, without poisoning the cache.
+                return merge_readings([known[1], fields], list(known[0]) + list(readings))
             self._remember(fields, image)
             # Discovery identifies field roles; every accepted known-field read
             # thereafter uses role-specific decoding and checks all variants.
