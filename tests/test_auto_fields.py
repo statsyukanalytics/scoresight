@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import numpy as np
 
+from studio.scoreboard.readings import parse_reading
 from studio.scoreboard.auto_fields import AutoReader, EMPTY, choose_pair
 
 
@@ -34,7 +35,7 @@ class AutomaticFieldsTests(unittest.TestCase):
         reading, fields = reader.read(np.zeros((40, 40, 3), dtype=np.uint8))
         self.assertEqual(reading, EMPTY)
         self.assertIsNone(fields)
-        reader._search.assert_called_once()
+        reader._search.assert_not_called()
 
     def test_batch_matches_sequential_across_missing_and_moved_boards(self):
         def make_reader():
@@ -66,6 +67,39 @@ class AutomaticFieldsTests(unittest.TestCase):
         self.assertEqual(actual, expected)
         self.assertEqual(batched.until_search, sequential.until_search)
         self.assertLess(batched.recognizer.recognize.call_count, sequential.recognizer.recognize.call_count)
+
+    def test_first_period_ordinal_aliases_do_not_relax_clock_or_confidence(self):
+        for period in ('1ST', 'IST', 'lST', 'i st'):
+            self.assertEqual(parse_reading('16:58', period, .96, .9), (1018, 1, True))
+            self.assertFalse(parse_reading('16:58', period, .89, .9)[2])
+        for period in ('I', 'FIRST', '1', '1ND', 'TSN'):
+            self.assertFalse(parse_reading('16:58', period, .99, .9)[2])
+        self.assertFalse(parse_reading('I6:58', 'IST', .99, .9)[2])
+
+    def test_inset_recovers_same_period_but_rejects_conflicting_period(self):
+        image = np.zeros((40, 80, 3), dtype=np.uint8)
+        for alternative, expected in [(('IST', .96), ('IST', .96)),
+                                      (('2ND', .99), ('IST', .85)),
+                                      (('IST', .70), ('IST', .85))]:
+            reader = AutoReader(Mock(), Mock())
+            reader.recognizer.recognize.side_effect = [[('16:58', .99), ('IST', .85)], [alternative]]
+            readings = reader._ocr(image, [(0, 0, 40, 20), (40, 0, 30, 20)])
+            self.assertEqual(readings, [('16:58', .99), expected])
+
+    def test_known_geometry_recovers_after_missing_frame_then_relocates_on_schedule(self):
+        reader = AutoReader(Mock(), Mock())
+        reader.fields = [(0, 0, 10, 10), (20, 0, 10, 10)]
+        reader.until_search = 3
+        reader.recognizer.recognize.side_effect = [[('', 0), ('', 0)],
+                                                 [('16:58', .99), ('IST', .97)],
+                                                 [('', 0), ('', 0)]]
+        reader._search = Mock(return_value=None)
+        image = np.zeros((40, 40, 3), dtype=np.uint8)
+        self.assertEqual(reader.read(image), (EMPTY, None))
+        self.assertEqual(reader.read(image)[0], (('16:58', .99), ('IST', .97)))
+        reader._search.assert_not_called()
+        self.assertEqual(reader.read(image), (EMPTY, None))
+        reader._search.assert_called_once()
 
 
 if __name__ == '__main__':

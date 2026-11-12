@@ -7,7 +7,8 @@ def parse_reading(clock, period, confidence, threshold):
     if text.startswith(':'):
         text = text[1:] if re.fullmatch(r'\d[.]\d', text[1:]) else '0' + text
     match = re.fullmatch(r'(\d{1,2}):([0-5]\d(?:[.]\d)?)', text)
-    periods = {'1ST':1, '2ND':2, '3RD':3, 'OT':4, 'SO':5}
+    # The ordinal suffix makes I/l versus 1 unambiguous in this field.
+    periods = {'1ST':1, 'IST':1, 'LST':1, '2ND':2, '3RD':3, 'OT':4, 'SO':5}
     p = periods.get(period.strip().upper().replace(' ', ''))
     overtime = re.fullmatch(r'(\d{1,2})OT', period.strip().upper().replace(' ', ''))
     if overtime and 1 <= int(overtime[1]) <= 17:

@@ -30,7 +30,7 @@ def finalized():
     metadata = blob.metadata or {}
     if metadata.get('retriedby') != 'nhl-clip':
         return '', 204
-    # A local GPU run can publish the same source generation while an older
+    # A completed local run can publish the same source generation while an older
     # cloud delivery is retrying. Do not replace that completed result.
     published = metadata.get('nhltimeline', '')
     if published.startswith(f'gs://{bucket_name}/scoreboard/'):
@@ -49,7 +49,7 @@ def finalized():
         return {'error': 'Unknown scoreboard profile'}, 400
     game_id = int(metadata['nhlgameid'])
     # Source generation identifies the exact input, even if a name is reused.
-    prefix = f'scoreboard/v2-auto/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
+    prefix = f'scoreboard/v2-auto-r2/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
     complete = bucket.blob(prefix + '/nhl-timeline.json')
     if complete.exists():
         blob.metadata = {**metadata, 'nhltimeline': f'gs://{bucket_name}/{complete.name}'}

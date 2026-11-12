@@ -44,6 +44,22 @@ class AutoReader:
     def _ocr(self, image, boxes):
         start = time.perf_counter()
         result = self.recognizer.recognize([image[y:y+h, x:x+w].copy() for x,y,w,h in boxes])
+        # Tight period glyphs can include the clock above in detector padding.
+        # Retry a vertical inset only for plausible, low-confidence period text.
+        retry = [i for i, (text, confidence) in enumerate(result)
+                 if (confidence or 0) < .9 and parse_reading('20:00', text, 1, .9)[2]]
+        if retry:
+            crops = []
+            for i in retry:
+                x,y,w,h = boxes[i]
+                pad = max(1, round(h * .15))
+                crops.append(image[y+pad:y+h-pad, x:x+w].copy())
+            for i, alternative in zip(retry, self.recognizer.recognize(crops)):
+                # Reject conflicting readings rather than choosing confidence alone.
+                if (parse_reading('20:00', alternative[0], 1, .9)[1]
+                        == parse_reading('20:00', result[i][0], 1, .9)[1]
+                        and (alternative[1] or 0) > (result[i][1] or 0)):
+                    result[i] = alternative
         self.ocr_seconds += time.perf_counter()-start
         return result
 
@@ -91,12 +107,14 @@ class AutoReader:
             confidence = min((r[1] or 0 for r in readings), default=0)
             if parse_reading(readings[0][0], readings[1][0], confidence, .9)[2] and self.until_search > 0:
                 return tuple(readings), self.fields
-            self.fields = None
-            self.until_search = 0
+            if self.until_search > 0:
+                # Remember geometry, never text. Missing/low-confidence samples
+                # stay empty; later frames are read afresh at the known location.
+                return EMPTY, None
         if self.until_search > 0:
             return EMPTY, None
         pair = self._search(image)
-        self.until_search = 20 if pair else 4  # ten-second recheck; retry missing fields after two seconds at 2 Hz
+        self.until_search = 20 if pair or self.fields else 4
         if pair:
             self.fields, readings = pair
             return readings, self.fields
