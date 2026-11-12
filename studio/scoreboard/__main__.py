@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from .align import align
+from .timeline import build_timeline
 from .nhl import load_bundle
 
 
@@ -27,11 +27,7 @@ def main():
     with (args.output / 'observations.csv').open(newline='', encoding='utf8') as file:
         observations = list(csv.DictReader(file))
     summary = json.loads((args.output / 'summary.json').read_text(encoding='utf8'))
-    result = align(observations, bundle['events'], bundle['shifts'], playoff=str(args.game)[4:6] == '03',
-                   duration=summary['duration_seconds'])
-    result['context'] = bundle['context']
-    result['unavailable_context'] = bundle['unavailable_context']
-    result['nhl_game_id'] = args.game
+    result = build_timeline(observations, bundle, args.game, duration=summary['duration_seconds'])
     (args.output / 'nhl-timeline.json').write_text(json.dumps(result, indent=2, default=str), encoding='utf8')
 
 

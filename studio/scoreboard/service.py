@@ -8,7 +8,7 @@ import tempfile
 
 from flask import Flask, request
 from google.cloud import storage
-from google.api_core.exceptions import PreconditionFailed
+from google.api_core.exceptions import PreconditionFailed, NotFound
 
 app = Flask(__name__)
 
@@ -26,7 +26,10 @@ def finalized():
         return '', 204
     bucket = storage.Client().bucket(bucket_name)
     blob = bucket.blob(name, generation=int(event['generation']))
-    blob.reload()
+    try:
+        blob.reload()
+    except NotFound:
+        return '', 204  # A deleted/cancelled exact-generation source cannot be processed.
     metadata = blob.metadata or {}
     if metadata.get('retriedby') != 'nhl-clip':
         return '', 204
@@ -49,7 +52,7 @@ def finalized():
         return {'error': 'Unknown scoreboard profile'}, 400
     game_id = int(metadata['nhlgameid'])
     # Source generation identifies the exact input, even if a name is reused.
-    prefix = f'scoreboard/v2-auto-r2/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
+    prefix = f'scoreboard/v2-integrated/{game_id}/{event["generation"]}/{blob.name.rsplit("/", 1)[-1]}'
     complete = bucket.blob(prefix + '/nhl-timeline.json')
     if complete.exists():
         blob.metadata = {**metadata, 'nhltimeline': f'gs://{bucket_name}/{complete.name}'}

@@ -19,3 +19,12 @@ def create_session(path, options):
         raise RuntimeError(f'{provider} failed to load; refusing silent CPU fallback')
     session.disable_fallback()
     return session
+
+
+def batch_frames():
+    """Bound CPU work and speculative crops separately from GPU throughput."""
+    default = 8 if os.environ.get('SCORESIGHT_DEVICE', 'cpu').lower() == 'cpu' else 16
+    value = int(os.environ.get('SCORESIGHT_BATCH_FRAMES', str(default)))
+    if not 1 <= value <= 32:
+        raise ValueError('SCORESIGHT_BATCH_FRAMES must be between 1 and 32')
+    return value

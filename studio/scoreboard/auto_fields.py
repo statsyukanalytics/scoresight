@@ -4,8 +4,8 @@ import time
 
 from .auto_layout import iou
 from .readings import parse_reading
-
-EMPTY = (('', 0), ('', 0))
+from .field_layouts import EMPTY, CLOCK_CHARACTERS, PERIOD_CHARACTERS, alternatives_for, merge_readings
+from .runtime import batch_frames
 
 
 def choose_pair(candidates):
@@ -37,13 +37,16 @@ class AutoReader:
         self.detector = detector
         self.recognizer = recognizer
         self.fields = None
+        self.layouts = []
+        self.batch_frames = batch_frames()
         self.until_search = 0
         self.layout_seconds = 0
         self.ocr_seconds = 0
 
-    def _ocr(self, image, boxes):
+    def _ocr(self, image, boxes, whitelists=None):
         start = time.perf_counter()
-        result = self.recognizer.recognize([image[y:y+h, x:x+w].copy() for x,y,w,h in boxes])
+        crops = [image[y:y+h, x:x+w].copy() for x,y,w,h in boxes]
+        result = self.recognizer.recognize(crops, whitelists) if whitelists else self.recognizer.recognize(crops)
         # Tight period glyphs can include the clock above in detector padding.
         # Retry a vertical inset only for plausible, low-confidence period text.
         retry = [i for i, (text, confidence) in enumerate(result)
@@ -54,7 +57,7 @@ class AutoReader:
                 x,y,w,h = boxes[i]
                 pad = max(1, round(h * .15))
                 crops.append(image[y+pad:y+h-pad, x:x+w].copy())
-            for i, alternative in zip(retry, self.recognizer.recognize(crops)):
+            for i, alternative in zip(retry, self.recognizer.recognize(crops, [whitelists[i] for i in retry]) if whitelists else self.recognizer.recognize(crops)):
                 # Reject conflicting readings rather than choosing confidence alone.
                 if (parse_reading('20:00', alternative[0], 1, .9)[1]
                         == parse_reading('20:00', result[i][0], 1, .9)[1]
@@ -100,28 +103,42 @@ class AutoReader:
                 return first
         return None
 
+    def _remember(self, fields, image):
+        known = alternatives_for(fields, image.shape[1], image.shape[0])
+        for previous in self.layouts:
+            if not any(all(iou(a,b) > .85 for a,b in zip(previous, pair)) for pair in known):
+                known.append(previous)
+        self.layouts = known[:8]
+        self.fields = fields
+
+    def _known(self, image):
+        layouts = self.layouts or [self.fields]
+        boxes = [box for pair in layouts for box in pair]
+        allowed = [CLOCK_CHARACTERS, PERIOD_CHARACTERS] * len(layouts)
+        return merge_readings(layouts, self._ocr(image, boxes, allowed))
+
     def read(self, image):
         self.until_search -= 1
-        if self.fields:
-            readings = self._ocr(image, self.fields)
-            confidence = min((r[1] or 0 for r in readings), default=0)
-            if parse_reading(readings[0][0], readings[1][0], confidence, .9)[2] and self.until_search > 0:
-                return tuple(readings), self.fields
-            if self.until_search > 0:
-                # Remember geometry, never text. Missing/low-confidence samples
-                # stay empty; later frames are read afresh at the known location.
-                return EMPTY, None
+        known = self._known(image) if self.fields else (EMPTY, None)
         if self.until_search > 0:
-            return EMPTY, None
+            if known[1]:
+                self.fields = known[1]
+            return known
         pair = self._search(image)
         self.until_search = 20 if pair or self.fields else 4
         if pair:
-            self.fields, readings = pair
-            return readings, self.fields
-        return EMPTY, None
+            fields, readings = pair
+            self._remember(fields, image)
+            # Discovery identifies field roles; every accepted known-field read
+            # thereafter uses role-specific decoding and checks all variants.
+            discovered = self._known(image)
+            if known[1] and discovered[1]:
+                return merge_readings([known[1], discovered[1]], list(known[0]) + list(discovered[0]))
+            return discovered
+        return known
 
     def read_many(self, images):
-        """Batch stable crops while preserving per-frame invalidation and search order."""
+        """Batch stable layouts, retaining the same ambiguity/recovery policy."""
         results = []
         index = 0
         while index < len(images):
@@ -129,22 +146,25 @@ class AutoReader:
                 results.append(self.read(images[index]))
                 index += 1
                 continue
-            fields = self.fields
-            count = min(len(images) - index, self.until_search - 1, 16)
+            layouts = self.layouts or [self.fields]
+            boxes = [box for pair in layouts for box in pair]
+            count = min(len(images) - index, self.until_search - 1, self.batch_frames)
             crops = [image[y:y+h, x:x+w].copy()
-                     for image in images[index:index+count] for x,y,w,h in fields]
+                     for image in images[index:index+count] for x,y,w,h in boxes]
+            allowed = [CLOCK_CHARACTERS, PERIOD_CHARACTERS] * (len(layouts) * count)
             start = time.perf_counter()
-            batch = self.recognizer.recognize(crops)
+            batch = self.recognizer.recognize(crops, allowed)
             self.ocr_seconds += time.perf_counter() - start
+            stride = len(boxes)
             for offset in range(count):
-                readings = tuple(batch[2*offset:2*offset+2])
-                confidence = min(r[1] or 0 for r in readings)
-                if not parse_reading(readings[0][0], readings[1][0], confidence, .9)[2]:
-                    # Discard speculative later crops: the board may have moved.
+                result = merge_readings(layouts, batch[stride*offset:stride*(offset+1)])
+                if not result[1]:
+                    # Retry low-confidence period crops, never carry text forward.
                     results.append(self.read(images[index]))
                     index += 1
                     break
                 self.until_search -= 1
-                results.append((readings, fields))
+                self.fields = result[1]
+                results.append(result)
                 index += 1
         return results

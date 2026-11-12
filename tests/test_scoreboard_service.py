@@ -1,6 +1,7 @@
 import json
 import unittest
 from unittest.mock import patch
+from google.api_core.exceptions import NotFound
 
 from studio.scoreboard.service import app
 
@@ -66,6 +67,15 @@ class SourceRoutingTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 204)
         blob.patch.assert_not_called()
+        blob.download_to_filename.assert_not_called()
+
+    @patch('studio.scoreboard.service.storage.Client')
+    def test_deleted_source_delivery_is_acknowledged(self, storage):
+        blob = storage.return_value.bucket.return_value.blob.return_value
+        blob.reload.side_effect = NotFound('source deleted')
+        response = self.client.post('/', json={'bucket':'statsyuk-game-videos',
+            'name':'scoreboard/sources/test.mp4', 'generation':'123'})
+        self.assertEqual(response.status_code,204)
         blob.download_to_filename.assert_not_called()
 
 

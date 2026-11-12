@@ -17,6 +17,8 @@ from .ppocr_engine import Recognizer, SMALL, model_files
 
 
 from .readings import parse_reading
+from .field_layouts import profile_layouts, merge_readings, CLOCK_CHARACTERS, PERIOD_CHARACTERS
+from .runtime import batch_frames
 
 
 def main():
@@ -27,14 +29,14 @@ def main():
     ap.add_argument('--seconds', type=float, help='Limit decoding for a pilot run')
     ap.add_argument('--ffmpeg', default='ffmpeg')
     args = ap.parse_args()
+    run_hashes = {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in ("extract.py", "auto_fields.py", "field_layouts.py", "readings.py", "runtime.py")}
     automatic = args.config is None
     cfg = json.loads(args.config.read_text()) if args.config else {'name': 'auto', 'sample_hz': 2, 'min_confidence': .9}
     args.output.mkdir(parents=True, exist_ok=True)
     if cfg['sample_hz'] <= 0:
         raise ValueError('sample_hz must be positive')
-    for x, y, w, h in ([] if automatic else (cfg['clock'], cfg['period'])):
-        if min(x, y) < 0 or min(w, h) <= 0 or x+w > cfg['width'] or y+h > cfg['height']:
-            raise ValueError('ROI falls outside configured video dimensions')
+    layouts = [] if automatic else profile_layouts(cfg)
+    frames_per_batch = batch_frames()
     if (args.output/'observations.csv').exists():
         raise SystemExit('Output exists; use a new output directory')
     probe = json.loads(subprocess.check_output([str(Path(args.ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')),
@@ -56,7 +58,7 @@ def main():
         auto_reader = AutoReader(layout_detector, rec)
     # Decode sequentially; retain selected frames' original PTS instead of inventing a CFR clock.
     # Crop the shared bounding rectangle before transferring frames to Python.
-    boxes = [[0, 0, cfg['width'], cfg['height']]] if automatic else [cfg['clock'],cfg['period']]
+    boxes = [[0, 0, cfg['width'], cfg['height']]] if automatic else [box for pair in layouts for box in pair]
     left=min(b[0] for b in boxes); top=min(b[1] for b in boxes)
     width=max(b[0]+b[2] for b in boxes)-left; height=max(b[1]+b[3] for b in boxes)-top
     cmd=[args.ffmpeg,'-hide_banner','-nostats']
@@ -82,9 +84,12 @@ def main():
         nonlocal ocr_seconds
         if crops:
             t=time.perf_counter()
-            result=rec.recognize(crops,['0123456789:.' if i%2==0 else '0123456789STNDROstndro' for i in range(len(crops))])
+            result=rec.recognize(crops,[CLOCK_CHARACTERS, PERIOD_CHARACTERS] * (len(crops)//2))
             ocr_seconds += time.perf_counter()-t
-            readings.extend(zip(result[::2],result[1::2])); crops.clear()
+            for offset in range(0, len(result), 2*len(layouts)):
+                reading, fields = merge_readings(layouts, result[offset:offset+2*len(layouts)], cfg['min_confidence'])
+                readings.append(reading); detected_layouts.append(fields)
+            crops.clear()
     with (args.output/'decode.log').open('w+',encoding='utf8') as log:
         proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=log,creationflags=0x08000000 if os.name=='nt' else 0)
         try:
@@ -95,10 +100,10 @@ def main():
                 image=np.frombuffer(raw,np.uint8).reshape(height,width,3)
                 if automatic:
                     frames.append(image)
-                    if len(frames) >= 16: flush_frames()
+                    if len(frames) >= frames_per_batch: flush_frames()
                 else:
                     for x,y,w,h in boxes: crops.append(image[y-top:y-top+h,x-left:x-left+w].copy())
-                if len(crops)>=32: flush()
+                if not automatic and len(crops)>=2*len(layouts)*frames_per_batch: flush()
             if automatic: flush_frames()
             flush()
             if proc.wait()!=0: raise RuntimeError('FFmpeg failed; see decode.log')
@@ -137,11 +142,11 @@ def main():
             writer.writerow([timestamp,clock[0],period[0],clock[1],period[1],seconds,p,valid,segment,transition])
     summary={'video':str(args.video.resolve()),'source_size':args.video.stat().st_size,'source_mtime_ns':args.video.stat().st_mtime_ns,
              'duration_seconds':float(probe['format']['duration']),
-             'config':cfg,'requested_seconds':args.seconds,'script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-             'parser_sha256':hashlib.sha256((ROOT/'readings.py').read_bytes()).hexdigest(),
+             'config':cfg,'requested_seconds':args.seconds,'script_sha256':run_hashes['extract.py'],'code_hashes':run_hashes,
+             'parser_sha256':run_hashes['readings.py'],
              'runtime':{'onnxruntime':ort.__version__,'numpy':np.__version__},
              'observations':len(readings),'valid':valid_count,'ocr_seconds':ocr_seconds,'wall_seconds':time.perf_counter()-started,
-             'layout_seconds':layout_seconds,'layout_detected':sum(fields is not None for fields in detected_layouts),
+             'layout_seconds':layout_seconds,'batch_frames':frames_per_batch,'layout_policy':'validated alternate layouts; reject conflicting readings','layout_detected':sum(fields is not None for fields in detected_layouts),
              'timestamp_basis':'selected decoded frame PTS; FFmpeg default input start normalization','provider':rec._session.get_providers(),
              'status':'unreviewed OCR; sequence flags do not classify live play or replay'}
     (args.output/'summary.json').write_text(json.dumps(summary,indent=2)); print(json.dumps(summary),flush=True)

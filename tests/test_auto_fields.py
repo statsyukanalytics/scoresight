@@ -42,7 +42,7 @@ class AutomaticFieldsTests(unittest.TestCase):
             reader = AutoReader(Mock(), Mock())
             first = [(0, 0, 2, 2), (2, 0, 2, 2)]
             moved = [(4, 0, 2, 2), (6, 0, 2, 2)]
-            def recognize(crops):
+            def recognize(crops, whitelists=None):
                 return [(('10:00' if i % 2 == 0 else '1ST'), .99)
                         if crop[0, 0, 0] else ('', 0) for i, crop in enumerate(crops)]
             reader.recognizer.recognize.side_effect = recognize
