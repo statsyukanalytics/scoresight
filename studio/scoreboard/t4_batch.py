@@ -24,7 +24,7 @@ def submit(event):
         'environment': {'variables': {'OCR_SOURCE': encoded, 'SCORESIGHT_DEVICE': 'cuda',
                                       'OCR_DATABASE_SECRET': f'projects/{project}/secrets/nhl-scoreboard-database-url/versions/1'}},
     }
-    policy = {'machineType': 'n1-standard-4', 'provisioningModel': 'SPOT',
+    policy = {'machineType': 'n1-standard-4', 'provisioningModel': os.environ.get('OCR_PROVISIONING_MODEL', 'STANDARD'),
               'accelerators': [{'type': 'nvidia-tesla-t4', 'count': 1}],
               'bootDisk': {'sizeGb': 50, 'type': 'pd-balanced'}}
     body = {'taskGroups': [{'taskCount': 1, 'taskSpec': task}],
