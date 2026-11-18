@@ -14,7 +14,7 @@ def submit(event):
     identity = os.environ['OCR_WORKER_ACCOUNT']
     source = {key: str(event[key]) for key in ('bucket', 'name', 'generation')}
     encoded = json.dumps(source, sort_keys=True)
-    job_id = 'scoresight-' + hashlib.sha256(encoded.encode()).hexdigest()[:32]
+    job_id = 'scoresight-t4-' + hashlib.sha256(encoded.encode()).hexdigest()[:32]
     task = {
         'maxRunDuration': '5400s', 'maxRetryCount': 1,
         'lifecyclePolicies': [{'action': 'RETRY_TASK', 'actionCondition': {'exitCodes': [50001]}}],
@@ -29,6 +29,7 @@ def submit(event):
               'bootDisk': {'sizeGb': 50, 'type': 'pd-balanced'}}
     body = {'taskGroups': [{'taskCount': 1, 'taskSpec': task}],
             'allocationPolicy': {'instances': [{'policy': policy, 'installGpuDrivers': True}],
+                                 'network': {'networkInterfaces': [{'noExternalIpAddress': True}]},
                                  'serviceAccount': {'email': identity}},
             'logsPolicy': {'destination': 'CLOUD_LOGGING'}}
     url = f'https://batch.googleapis.com/v1/projects/{project}/locations/{region}/jobs'
