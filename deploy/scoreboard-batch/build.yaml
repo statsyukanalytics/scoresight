@@ -1,0 +1,8 @@
+steps:
+- name: gcr.io/cloud-builders/docker
+  args: [build, -f, deploy/scoreboard-batch/Dockerfile, --build-arg, 'BASE=${_REPO}@sha256:6e5e646fbb9fa1f650773da3ecd3cb1a44dd3441701750836f8f6f32b93d39d4', -t, '${_REPO}:worker-$BUILD_ID', .]
+- name: gcr.io/cloud-builders/docker
+  args: [build, -f, deploy/scoreboard-batch/Dockerfile, --build-arg, 'BASE=${_REPO}@sha256:37a9cc8c98258ffc0abdd8c64b9da855bcde6a21148ea0dff72073e5124fe13e', -t, '${_REPO}:dispatcher-$BUILD_ID', .]
+images: ['${_REPO}:worker-$BUILD_ID', '${_REPO}:dispatcher-$BUILD_ID']
+substitutions:
+  _REPO: us-central1-docker.pkg.dev/grounded-jetty-485516-r2/statsyuk/scoreboard-ocr

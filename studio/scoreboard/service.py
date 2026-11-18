@@ -15,7 +15,10 @@ app = Flask(__name__)
 
 @app.post('/')
 def finalized():
-    event = request.get_json()
+    return process_event(request.get_json(), dispatch=True)
+
+
+def process_event(event, *, dispatch):
     bucket_name = os.environ.get('VIDEO_BUCKET', 'statsyuk-game-videos')
     if not isinstance(event, dict) or event.get('bucket') != bucket_name:
         return '', 204
@@ -58,6 +61,10 @@ def finalized():
         blob.metadata = {**metadata, 'nhltimeline': f'gs://{bucket_name}/{complete.name}'}
         blob.patch(if_metageneration_match=blob.metageneration)
         return '', 204
+    if dispatch:
+        from .t4_batch import submit
+        submit(event)
+        return '', 204
     with tempfile.TemporaryDirectory() as tmp:
         print(json.dumps({'stage': 'download', 'nhl_game_id': game_id, 'source': name}), flush=True)
         folder = Path(tmp)
@@ -68,7 +75,7 @@ def finalized():
                    '--game', str(game_id), '--output', str(output)]
         if profile != 'auto':
             command += ['--config', str(profiles / (profile + '.json'))]
-        subprocess.run(command, check=True, timeout=3300)
+        subprocess.run(command, check=True)
         timeline = json.loads((output / 'nhl-timeline.json').read_text(encoding='utf8'))
         timeline['source'] = {'uri': f'gs://{bucket_name}/{name}', 'generation': event['generation']}
         # Publish the timeline last: retries only skip fully published results.
