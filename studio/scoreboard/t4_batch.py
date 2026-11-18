@@ -29,7 +29,9 @@ def submit(event):
               'bootDisk': {'sizeGb': 50, 'type': 'pd-balanced'}}
     body = {'taskGroups': [{'taskCount': 1, 'taskSpec': task}],
             'allocationPolicy': {'instances': [{'policy': policy, 'installGpuDrivers': True}],
-                                 'network': {'networkInterfaces': [{'noExternalIpAddress': True}]},
+                                 'network': {'networkInterfaces': [{'noExternalIpAddress': True,
+                                     'network': f'projects/{project}/global/networks/default',
+                                     'subnetwork': f'projects/{project}/regions/{region}/subnetworks/default'}]},
                                  'serviceAccount': {'email': identity}},
             'logsPolicy': {'destination': 'CLOUD_LOGGING'}}
     url = f'https://batch.googleapis.com/v1/projects/{project}/locations/{region}/jobs'
