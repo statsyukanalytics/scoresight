@@ -1,6 +1,5 @@
 """Resolve a stable replay ID on the worker that reads the media."""
 import re
-import json
 
 from yt_dlp import YoutubeDL
 
@@ -18,19 +17,12 @@ def resolve_replay(video_id, progressive=False):
     return info["url"], info.get("http_headers", {}), float(info["duration"])
 
 
-def ocr_source(video_id, stack):
-    from .replay_buffer import buffered_playlist
-
+def ocr_source(video_id):
     info = _resolve(video_id, False)
-    url = info["url"]
-    headers = info.get("http_headers", {})
+    options = ffmpeg_headers(info.get("http_headers", {}))
     if info.get("protocol", "").startswith("m3u8"):
-        local = stack.enter_context(buffered_playlist(url, headers))
-        if local:
-            print(json.dumps({"stage": "replay", "mode": "buffered_hls"}), flush=True)
-            return local, []
-    print(json.dumps({"stage": "replay", "mode": "direct"}), flush=True)
-    return url, ffmpeg_headers(headers)
+        options += ["-http_persistent", "1", "-http_multiple", "1"]
+    return info["url"], options
 
 
 def ffmpeg_headers(headers):

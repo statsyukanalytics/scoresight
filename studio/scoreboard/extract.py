@@ -1,6 +1,5 @@
 """Read a configured broadcast clock using ScoreSight, preserving sampled PTS."""
 import argparse
-from contextlib import ExitStack
 import csv
 import hashlib
 import json
@@ -24,11 +23,6 @@ from .runtime import batch_frames
 
 
 def main():
-    with ExitStack() as resources:
-        extract(resources)
-
-
-def extract(resources):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--video', type=Path, required=True)
     ap.add_argument('--config', type=Path, help='Optional manual layout; omit for automatic detection')
@@ -55,7 +49,7 @@ def extract(resources):
     source, headers = str(args.video), []
     if replay_id := os.environ.get('SCORESIGHT_LINKED_REPLAY'):
         from .linked_replay import ocr_source
-        source, headers = ocr_source(replay_id, resources)
+        source, headers = ocr_source(replay_id)
     probe = json.loads(subprocess.check_output([str(Path(args.ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')),
         '-v','error','-show_streams','-show_format','-of','json',*headers,source], creationflags=0x08000000 if os.name=='nt' else 0))
     stream = next(s for s in probe['streams'] if s['codec_type']=='video')
@@ -82,6 +76,9 @@ def extract(resources):
     if args.start_seconds:
         cmd += ['-copyts', '-start_at_zero', '-ss', str(args.start_seconds)]
     if args.seconds: cmd += ['-t',str(args.seconds)]
+    if replay_id:
+        # Queue compressed packets so archive reads can overlap GPU inference.
+        cmd += ['-thread_queue_size', '2048']
     cmd += [*headers, '-i', source]
     cmd += ['-an','-vf',f"select='gte(t,{args.start_seconds})*(isnan(prev_selected_t)+gte(t-prev_selected_t,{1/cfg['sample_hz']}))',showinfo,crop={width}:{height}:{left}:{top}:exact=1",
             '-fps_mode','passthrough','-pix_fmt','bgr24','-f','rawvideo','pipe:1']
@@ -109,11 +106,14 @@ def extract(resources):
                 reading, fields = merge_readings(layouts, result[offset:offset+2*len(layouts)], cfg['min_confidence'])
                 readings.append(reading); detected_layouts.append(fields)
             crops.clear()
+    frame_read_seconds = 0.0
     with (args.output/'decode.log').open('w+',encoding='utf8') as log:
         proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=log,creationflags=0x08000000 if os.name=='nt' else 0)
         try:
             while True:
+                read_start = time.perf_counter()
                 raw=proc.stdout.read(width*height*3)
+                frame_read_seconds += time.perf_counter() - read_start
                 if not raw: break
                 if len(raw)!=width*height*3: raise RuntimeError('Truncated decoded frame')
                 image=np.frombuffer(raw,np.uint8).reshape(height,width,3)
@@ -160,7 +160,7 @@ def extract(resources):
                 previous=(timestamp,seconds,p)
             writer.writerow([timestamp,clock[0],period[0],clock[1],period[1],seconds,p,valid,segment,transition])
     summary={'video':str(args.video.resolve()),'source_size':args.video.stat().st_size,'source_mtime_ns':args.video.stat().st_mtime_ns,
-             'duration_seconds':float(probe['format']['duration']),
+             'duration_seconds':float(probe['format']['duration']), 'frame_read_seconds':frame_read_seconds,
              'config':cfg,'start_seconds':args.start_seconds,'requested_seconds':args.seconds,'script_sha256':run_hashes['extract.py'],'code_hashes':run_hashes,
              'parser_sha256':run_hashes['readings.py'],
              'runtime':{'onnxruntime':ort.__version__,'numpy':np.__version__},
