@@ -16,6 +16,46 @@ class SourceRoutingTests(unittest.TestCase):
         self.assertEqual(self.client.get('/replay/123', headers={'Range': 'bytes=100-50'}).status_code, 416)
         resolve.assert_not_called()
 
+    @patch('studio.scoreboard.service.urlopen')
+    @patch('studio.scoreboard.service.playback_source')
+    def test_replay_sends_first_chunk_before_reading_rest_of_range(self, resolve, open_archive):
+        resolve.return_value = ('https://archive.invalid/game.mp4', {}, 3600)
+        connection = open_archive.return_value
+        upstream = connection.__enter__.return_value
+        upstream.status = 206
+        upstream.headers = {'Content-Range': 'bytes 100-65639/90000'}
+        first_chunk = b'a' * (64 * 1024)
+        upstream.read1.side_effect = [first_chunk, b'last']
+
+        response = self.client.get('/replay/123', headers={'Range': 'bytes=100-65639'}, buffered=False)
+        try:
+            self.assertEqual(response.status_code, 206)
+            self.assertEqual(response.headers['Content-Range'], 'bytes 100-65639/90000')
+            self.assertEqual(response.headers['Content-Length'], '65540')
+            self.assertEqual(open_archive.call_args.args[0].get_header('Range'), 'bytes=100-65639')
+            chunks = iter(response.response)
+            self.assertEqual(next(chunks), first_chunk)
+            upstream.read1.assert_called_once_with(64 * 1024)
+            self.assertEqual(list(chunks), [b'last'])
+        finally:
+            response.close()
+        connection.__exit__.assert_called_once()
+
+    @patch('studio.scoreboard.service.urlopen')
+    @patch('studio.scoreboard.service.playback_source')
+    def test_replay_closes_archive_connection_when_viewer_stops(self, resolve, open_archive):
+        resolve.return_value = ('https://archive.invalid/game.mp4', {}, 3600)
+        connection = open_archive.return_value
+        upstream = connection.__enter__.return_value
+        upstream.status = 206
+        upstream.headers = {'Content-Range': 'bytes 0-2097151/3000000'}
+        upstream.read1.return_value = b'first'
+
+        response = self.client.get('/replay/123', buffered=False)
+        response.close()
+        upstream.read1.assert_called_once_with(64 * 1024)
+        connection.__exit__.assert_called_once()
+
     @patch('studio.scoreboard.service.storage.Client')
     def test_new_and_legacy_sources_use_exact_generation(self, storage):
         bucket = storage.return_value.bucket.return_value

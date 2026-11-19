@@ -7,6 +7,7 @@ import sys
 import tempfile
 import re
 import time
+from contextlib import ExitStack
 from functools import lru_cache
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -16,6 +17,7 @@ from google.cloud import storage
 from google.api_core.exceptions import PreconditionFailed, NotFound
 
 app = Flask(__name__)
+PLAYBACK_CHUNK_BYTES = 64 * 1024
 
 
 @lru_cache(maxsize=64)
@@ -37,16 +39,40 @@ def replay_bytes(video_id):
         return '', 416
     try:
         url, headers, _ = playback_source(video_id, int(time.time()) // 300)
-        with urlopen(Request(url, headers={**headers, 'Range': f'bytes={start}-{end}'}), timeout=20) as upstream:
+        with ExitStack() as connection:
+            upstream = connection.enter_context(urlopen(
+                Request(url, headers={**headers, 'Range': f'bytes={start}-{end}'}),
+                timeout=20,
+            ))
             bounds = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', upstream.headers.get('Content-Range', ''))
-            if upstream.status != 206 or not bounds or int(bounds[1]) != start or int(bounds[2]) > end:
+            if upstream.status != 206 or not bounds:
                 return 'Archive does not support this range', 502
-            data = upstream.read(end - start + 1)
-            if len(data) != int(bounds[2]) - start + 1:
+            first_byte, last_byte, total = map(int, bounds.groups())
+            if first_byte != start or not start <= last_byte <= end or last_byte >= total:
+                return 'Archive does not support this range', 502
+            length = last_byte - first_byte + 1
+            first_chunk = upstream.read1(min(length, PLAYBACK_CHUNK_BYTES))
+            if not first_chunk:
                 return 'Incomplete archive response', 502
-            return Response(data, status=206, mimetype='video/mp4', headers={
-                'Content-Range': bounds[0], 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store'})
+
+            def chunks():
+                yield first_chunk
+                remaining = length - len(first_chunk)
+                while remaining:
+                    chunk = upstream.read1(min(remaining, PLAYBACK_CHUNK_BYTES))
+                    if not chunk:
+                        raise OSError('Archive response ended before the advertised byte range')
+                    remaining -= len(chunk)
+                    yield chunk
+
+            response = Response(chunks(), status=206, mimetype='video/mp4', headers={
+                'Content-Range': bounds[0], 'Content-Length': str(length),
+                'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store',
+            })
+            response.call_on_close(connection.pop_all().close)
+            return response
     except HTTPError as exc:
+        exc.close()
         playback_source.cache_clear()
         return '', 416 if exc.code == 416 else 502
     except (URLError, TimeoutError):
