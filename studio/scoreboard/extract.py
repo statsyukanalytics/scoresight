@@ -46,8 +46,13 @@ def main():
     frames_per_batch = batch_frames()
     if (args.output/'observations.csv').exists():
         raise SystemExit('Output exists; use a new output directory')
+    source, headers = str(args.video), []
+    if replay_id := os.environ.get('SCORESIGHT_LINKED_REPLAY'):
+        from .linked_replay import resolve_replay, ffmpeg_headers
+        source, provider_headers, _ = resolve_replay(replay_id)
+        headers = ffmpeg_headers(provider_headers)
     probe = json.loads(subprocess.check_output([str(Path(args.ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')),
-        '-v','error','-show_streams','-show_format','-of','json',str(args.video)], creationflags=0x08000000 if os.name=='nt' else 0))
+        '-v','error','-show_streams','-show_format','-of','json',*headers,source], creationflags=0x08000000 if os.name=='nt' else 0))
     stream = next(s for s in probe['streams'] if s['codec_type']=='video')
     if automatic:
         cfg.update(width=stream['width'], height=stream['height'])
@@ -72,7 +77,7 @@ def main():
     if args.start_seconds:
         cmd += ['-copyts', '-start_at_zero', '-ss', str(args.start_seconds)]
     if args.seconds: cmd += ['-t',str(args.seconds)]
-    cmd += ['-i',str(args.video)]
+    cmd += [*headers, '-i', source]
     cmd += ['-an','-vf',f"select='gte(t,{args.start_seconds})*(isnan(prev_selected_t)+gte(t-prev_selected_t,{1/cfg['sample_hz']}))',showinfo,crop={width}:{height}:{left}:{top}:exact=1",
             '-fps_mode','passthrough','-pix_fmt','bgr24','-f','rawvideo','pipe:1']
     readings=[]; crops=[]; ocr_seconds=0; detected_layouts=[]; layout_seconds=0; frames=[]

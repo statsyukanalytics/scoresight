@@ -10,6 +10,12 @@ class SourceRoutingTests(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
 
+    @patch('studio.scoreboard.service.playback_source')
+    def test_invalid_playback_requests_do_not_contact_archive(self, resolve):
+        self.assertEqual(self.client.get('/replay/not-a-video').status_code, 404)
+        self.assertEqual(self.client.get('/replay/123', headers={'Range': 'bytes=100-50'}).status_code, 416)
+        resolve.assert_not_called()
+
     @patch('studio.scoreboard.service.storage.Client')
     def test_new_and_legacy_sources_use_exact_generation(self, storage):
         bucket = storage.return_value.bucket.return_value

@@ -5,12 +5,52 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import re
+import time
+from functools import lru_cache
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
-from flask import Flask, request
+from flask import Flask, Response, request
 from google.cloud import storage
 from google.api_core.exceptions import PreconditionFailed, NotFound
 
 app = Flask(__name__)
+
+
+@lru_cache(maxsize=64)
+def playback_source(video_id, time_bucket):
+    from .linked_replay import resolve_replay
+    return resolve_replay(video_id, progressive=True)
+
+
+@app.get('/replay/<video_id>')
+def replay_bytes(video_id):
+    if not re.fullmatch(r'[0-9]{1,20}', video_id):
+        return '', 404
+    match = re.fullmatch(r'bytes=(\d{1,16})-(\d{0,16})', request.headers.get('Range', 'bytes=0-'))
+    if not match:
+        return '', 416
+    start = int(match[1])
+    end = min(int(match[2]) if match[2] else start + 2097151, start + 2097151)
+    if end < start:
+        return '', 416
+    try:
+        url, headers, _ = playback_source(video_id, int(time.time()) // 300)
+        with urlopen(Request(url, headers={**headers, 'Range': f'bytes={start}-{end}'}), timeout=20) as upstream:
+            bounds = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', upstream.headers.get('Content-Range', ''))
+            if upstream.status != 206 or not bounds or int(bounds[1]) != start or int(bounds[2]) > end:
+                return 'Archive does not support this range', 502
+            data = upstream.read(end - start + 1)
+            if len(data) != int(bounds[2]) - start + 1:
+                return 'Incomplete archive response', 502
+            return Response(data, status=206, mimetype='video/mp4', headers={
+                'Content-Range': bounds[0], 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, no-store'})
+    except HTTPError as exc:
+        playback_source.cache_clear()
+        return '', 416 if exc.code == 416 else 502
+    except (URLError, TimeoutError):
+        return 'Archive unavailable', 502
 
 
 @app.post('/')
@@ -75,7 +115,10 @@ def process_event(event, *, dispatch):
                    '--game', str(game_id), '--output', str(output)]
         if profile != 'auto':
             command += ['--config', str(profiles / (profile + '.json'))]
-        subprocess.run(command, check=True)
+        env = os.environ.copy()
+        if metadata.get('replayprovider') == 'okru':
+            env['SCORESIGHT_LINKED_REPLAY'] = metadata['replayid']
+        subprocess.run(command, check=True, env=env)
         timeline = json.loads((output / 'nhl-timeline.json').read_text(encoding='utf8'))
         timeline['source'] = {'uri': f'gs://{bucket_name}/{name}', 'generation': event['generation']}
         # Publish the timeline last: retries only skip fully published results.

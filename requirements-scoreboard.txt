@@ -7,3 +7,4 @@ PyYAML
 Flask
 gunicorn
 certifi
+yt-dlp==2026.10.26
