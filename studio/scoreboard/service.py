@@ -18,6 +18,8 @@ from google.api_core.exceptions import PreconditionFailed, NotFound
 
 app = Flask(__name__)
 PLAYBACK_CHUNK_BYTES = 64 * 1024
+# Cover the MP4 sample index and initial frames in one browser request.
+PLAYBACK_RANGE_BYTES = 16 * 1024 * 1024
 
 
 @lru_cache(maxsize=64)
@@ -34,7 +36,8 @@ def replay_bytes(video_id):
     if not match:
         return '', 416
     start = int(match[1])
-    end = min(int(match[2]) if match[2] else start + 2097151, start + 2097151)
+    range_limit = start + PLAYBACK_RANGE_BYTES - 1
+    end = min(int(match[2]), range_limit) if match[2] else range_limit
     if end < start:
         return '', 416
     try:

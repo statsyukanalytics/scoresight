@@ -48,10 +48,11 @@ class SourceRoutingTests(unittest.TestCase):
         connection = open_archive.return_value
         upstream = connection.__enter__.return_value
         upstream.status = 206
-        upstream.headers = {'Content-Range': 'bytes 0-2097151/3000000'}
+        upstream.headers = {'Content-Range': 'bytes 0-16777215/20000000'}
         upstream.read1.return_value = b'first'
 
         response = self.client.get('/replay/123', buffered=False)
+        self.assertEqual(open_archive.call_args.args[0].get_header('Range'), 'bytes=0-16777215')
         response.close()
         upstream.read1.assert_called_once_with(64 * 1024)
         connection.__exit__.assert_called_once()
