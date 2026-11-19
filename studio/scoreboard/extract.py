@@ -1,5 +1,6 @@
 """Read a configured broadcast clock using ScoreSight, preserving sampled PTS."""
 import argparse
+from contextlib import ExitStack
 import csv
 import hashlib
 import json
@@ -23,6 +24,11 @@ from .runtime import batch_frames
 
 
 def main():
+    with ExitStack() as resources:
+        extract(resources)
+
+
+def extract(resources):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--video', type=Path, required=True)
     ap.add_argument('--config', type=Path, help='Optional manual layout; omit for automatic detection')
@@ -48,9 +54,8 @@ def main():
         raise SystemExit('Output exists; use a new output directory')
     source, headers = str(args.video), []
     if replay_id := os.environ.get('SCORESIGHT_LINKED_REPLAY'):
-        from .linked_replay import resolve_replay, ffmpeg_headers
-        source, provider_headers, _ = resolve_replay(replay_id)
-        headers = ffmpeg_headers(provider_headers)
+        from .linked_replay import ocr_source
+        source, headers = ocr_source(replay_id, resources)
     probe = json.loads(subprocess.check_output([str(Path(args.ffmpeg).with_name('ffprobe.exe' if os.name == 'nt' else 'ffprobe')),
         '-v','error','-show_streams','-show_format','-of','json',*headers,source], creationflags=0x08000000 if os.name=='nt' else 0))
     stream = next(s for s in probe['streams'] if s['codec_type']=='video')
