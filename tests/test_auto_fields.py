@@ -91,6 +91,29 @@ class AutomaticFieldsTests(unittest.TestCase):
             self.assertFalse(parse_reading('16:58', period, .89, .9)[2])
         for period in ('I', 'FIRST', '1', '1ND', 'TSN'):
             self.assertFalse(parse_reading('16:58', period, .99, .9)[2])
+
+    def test_missing_frame_keeps_batch_and_retries_only_the_uncertain_period(self):
+        reader = AutoReader(Mock(), Mock())
+        fields = [(0, 0, 8, 10), (8, 0, 8, 10)]
+        reader.fields = fields
+        reader.layouts = [fields]
+        reader.until_search = 5
+        reader.batch_frames = 4
+        clock = ('16:58', .99)
+        good = (clock, ('1ST', .99))
+        reader.recognizer.recognize.side_effect = [
+            [('', 0), ('', 0), clock, ('1ST', .85), *good, *good],
+            [('1ST', .99)],
+        ]
+        reader._search = Mock()
+        images = [np.full((10, 16, 3), i, dtype=np.uint8) for i in range(4)]
+        self.assertEqual(reader.read_many(images), [(EMPTY, None)] + [(good, fields)] * 3)
+        first, retry = reader.recognizer.recognize.call_args_list
+        self.assertEqual(len(first.args[0]), 8)
+        self.assertEqual(len(retry.args[0]), 1)
+        np.testing.assert_array_equal(retry.args[0][0], images[1][2:8, 8:16])
+        self.assertEqual(reader.until_search, 1)
+        reader._search.assert_not_called()
         self.assertFalse(parse_reading('I6:58', 'IST', .99, .9)[2])
 
     def test_inset_recovers_same_period_but_rejects_conflicting_period(self):

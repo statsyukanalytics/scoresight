@@ -53,10 +53,16 @@ class AutoReader:
         start = time.perf_counter()
         crops = [image[y:y+h, x:x+w].copy() for x,y,w,h in boxes]
         result = self.recognizer.recognize(crops, whitelists) if whitelists else self.recognizer.recognize(crops)
+        self._retry_periods(image, boxes, result, whitelists)
+        self.ocr_seconds += time.perf_counter()-start
+        return result
+
+    def _retry_periods(self, image, boxes, result, whitelists):
         # Tight period glyphs can include the clock above in detector padding.
         # Retry a vertical inset only for plausible, low-confidence period text.
         retry = [i for i, (text, confidence) in enumerate(result)
                  if (confidence or 0) < .9 and parse_reading('20:00', text, 1, .9)[2]]
+        improved = False
         if retry:
             crops = []
             for i in retry:
@@ -69,8 +75,8 @@ class AutoReader:
                         == parse_reading('20:00', result[i][0], 1, .9)[1]
                         and (alternative[1] or 0) > (result[i][1] or 0)):
                     result[i] = alternative
-        self.ocr_seconds += time.perf_counter()-start
-        return result
+                    improved = True
+        return improved
 
     def _search(self, image):
         height, width = image.shape[:2]
@@ -161,20 +167,21 @@ class AutoReader:
             count = min(len(images) - index, self.until_search - 1, self.batch_frames)
             crops = [image[y:y+h, x:x+w].copy()
                      for image in images[index:index+count] for x,y,w,h in boxes]
-            allowed = [CLOCK_CHARACTERS, PERIOD_CHARACTERS] * (len(layouts) * count)
+            allowed = [CLOCK_CHARACTERS, PERIOD_CHARACTERS] * len(layouts)
             start = time.perf_counter()
-            batch = self.recognizer.recognize(crops, allowed)
-            self.ocr_seconds += time.perf_counter() - start
+            batch = self.recognizer.recognize(crops, allowed * count)
             stride = len(boxes)
             for offset in range(count):
-                result = merge_readings(layouts, batch[stride*offset:stride*(offset+1)])
-                if not result[1]:
-                    # Retry low-confidence period crops, never carry text forward.
-                    results.append(self.read(images[index]))
-                    index += 1
-                    break
+                readings = batch[stride*offset:stride*(offset+1)]
+                result = merge_readings(layouts, readings)
+                # Geometry stays fixed until the next scheduled search. Reuse
+                # this frame's first pass and keep the rest of the batch.
+                if not result[1] and self._retry_periods(images[index], boxes, readings, allowed):
+                    result = merge_readings(layouts, readings)
                 self.until_search -= 1
-                self.fields = result[1]
+                if result[1]:
+                    self.fields = result[1]
                 results.append(result)
                 index += 1
+            self.ocr_seconds += time.perf_counter() - start
         return results
